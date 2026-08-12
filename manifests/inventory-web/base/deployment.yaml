@@ -58,7 +58,10 @@ spec:
                 echo "<h1>${APP_NAME} v${APP_VERSION} &mdash; env: ${APP_ENV}</h1>"
 
                 echo "<h2>1. ConfigMap as env vars (configMapGenerator envs:)</h2><pre>"
-                env | grep -E '^(APP_|LOG_|SERVER_|INVENTORY_)' | sort || true
+                # Exclude the *_SERVICE_*/*_PORT* vars the kubelet injects
+                # for every Service - they are not from our ConfigMap.
+                env | grep -E '^(APP_|LOG_|SERVER_|INVENTORY_)' \
+                  | grep -vE '_SERVICE_|_PORT|^APP_ROOT=' | sort || true
                 echo "</pre>"
 
                 echo "<h2>2. ConfigMap as a mounted file (configMapGenerator files:)</h2><pre>"

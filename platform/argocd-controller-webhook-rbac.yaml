@@ -1,0 +1,48 @@
+---
+# OPTIONAL - only needed on a locked-down Argo CD instance.
+#
+# The Vault platform ships a MutatingWebhookConfiguration (that is what agent
+# injection *is*). A default OpenShift GitOps install gives the
+# application-controller cluster-admin and this is unnecessary. But on an
+# instance with reduced privileges - for example one managed by RHACM's GitOps
+# addon - the controller cannot create cluster-scoped admission objects, and
+# the vault Application hangs with the webhook stuck OutOfSync:
+#
+#   $ oc auth can-i create mutatingwebhookconfigurations \
+#       --as=system:serviceaccount:openshift-gitops:openshift-gitops-argocd-application-controller
+#   no
+#
+# Run that check first. If it prints "yes", you do not need this file.
+#
+# Apply with:
+#   oc apply -f platform/argocd-controller-webhook-rbac.yaml
+#
+# This is a SEPARATE ClusterRole rather than an edit to the operator-managed
+# one (openshift-gitops-openshift-gitops-argocd-application-controller),
+# because the operator reconciles that object and would revert the change.
+#
+# Remove with:
+#   oc delete -f platform/argocd-controller-webhook-rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: argocd-application-controller-admission-webhooks
+rules:
+  - apiGroups: ["admissionregistration.k8s.io"]
+    resources:
+      - mutatingwebhookconfigurations
+      - validatingwebhookconfigurations
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: argocd-application-controller-admission-webhooks
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: argocd-application-controller-admission-webhooks
+subjects:
+  - kind: ServiceAccount
+    name: openshift-gitops-argocd-application-controller
+    namespace: openshift-gitops

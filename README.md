@@ -30,7 +30,14 @@ bootstrap/                    applied once, by hand
 
 platform/                     Argo CD instance settings - applied by hand, NOT synced
 ├── argocd-openshift-gitops-patch.yaml   annotation tracking, resource exclusions
+├── argocd-controller-webhook-rbac.yaml  only for a locked-down instance (see below)
 └── appproject-global.yaml    optional global AppProject for inherited settings
+
+multicluster/                 optional - run the demo across two clusters
+├── hub/                      Vault platform + payments-api
+├── eks/                      Vault platform + inventory-web (vanilla overlays)
+├── bootstrap-hub/            root Application for the hub
+└── bootstrap-eks/            root Application for the spoke
 
 apps/                         nothing but Application CRs - the root app syncs this
 ├── vault.yaml                wave 0   project: demo-platform
@@ -46,9 +53,17 @@ manifests/                    the actual workloads
 │   │   ├── config/*.properties     <- key=value source of truth
 │   │   └── kustomization.yaml      <- configMapGenerator + secretGenerator
 │   └── overlays/demo/              <- overrides individual keys, pins the image digest
-└── inventory-web/
+├── inventory-web/
+│   ├── base/
+│   ├── overlays/demo/              <- OpenShift: adds a Route
+│   └── overlays/eks/               <- plain Kubernetes: no Route
+├── vault/
+│   ├── base/
+│   ├── overlays/openshift/         <- UID comes from the SCC
+│   └── overlays/vanilla/           <- UID pinned explicitly
+└── vault-config/
     ├── base/
-    └── overlays/demo/
+    └── overlays/{openshift,vanilla}/
 
 scripts/
 ├── set-repo.sh               point the Applications at your fork
@@ -80,6 +95,19 @@ cannot grant itself cluster-wide permissions through GitOps.
 - Optional, for the full local check: `kubeconform` on `$PATH`. Without it
   `scripts/validate.sh` still renders and runs its policy checks, and CI runs
   the schema stage regardless.
+- An Argo CD instance whose application-controller can create
+  `MutatingWebhookConfiguration` — agent injection *is* a webhook. The default
+  `openshift-gitops` install has cluster-admin and is fine. Check with:
+
+  ```bash
+  oc auth can-i create mutatingwebhookconfigurations \
+    --as=system:serviceaccount:openshift-gitops:openshift-gitops-argocd-application-controller
+  ```
+
+  If that prints `no` (RHACM-managed instances are often locked down), apply
+  [platform/argocd-controller-webhook-rbac.yaml](platform/argocd-controller-webhook-rbac.yaml),
+  which grants exactly that and nothing else. Otherwise the `vault`
+  Application sits OutOfSync with the webhook never created.
 
 Install the operator if needed:
 
@@ -422,6 +450,10 @@ It warns, without failing, when `targetRevision` is a branch.
 | Sync fails: "resource ... is not permitted in project demo-apps" | Working as designed. The app tried to create a kind the restricted project forbids — move it to `manifests/vault/` (project `demo-platform`) or add the kind to `namespaceResourceWhitelist` if it genuinely belongs to the app. |
 | Pods start but never get a Vault sidecar, and the namespace looks fine | The `demo.redhat.com/vault-injection: enabled` label is missing from the namespace. It comes from `managedNamespaceMetadata`; check `oc get ns payments-demo --show-labels`. |
 | Argo CD reports drift on resources it does not own | Label tracking. Apply the instance patch to switch to annotation tracking. |
+| `vault` app stuck OutOfSync, webhook never created, injector CrashLoopBackOff with `TLS handshake error: no certificate available` | The controller cannot create `MutatingWebhookConfiguration`. See [Prerequisites](#prerequisites). |
+| Pod hangs in `Init:0/1`, agent logs `Code: 403 ... permission denied` on `/v1/auth/kubernetes/login` | Vault has no role for that ServiceAccount — usually because dev-mode Vault restarted and lost its state. Re-sync `vault-config`. |
+| `vault-seed` Job stuck `Terminating`, blocking re-sync | The Argo hook finalizer was left behind when a sync was interrupted. Clear it: `oc patch job vault-seed -n vault-demo --type=merge -p '{"metadata":{"finalizers":null}}'` |
+| A sync sits in `Running` for ever on `waiting for healthy state of ...` | An in-flight operation survives a controller restart and keeps its original wave plan, so a fix pushed to git is never applied. Terminate it: `oc patch application <app> -n openshift-gitops --type=merge -p '{"status":{"operationState":{"phase":"Terminating"}}}'` |
 
 Useful:
 
@@ -433,6 +465,53 @@ oc logs -n vault-demo deploy/vault-agent-injector
 oc get ns payments-demo --show-labels          # managedNamespaceMetadata applied?
 oc get appproject demo-apps -n openshift-gitops -o yaml
 ```
+
+---
+
+## Running it across two clusters
+
+[multicluster/](multicluster/) runs the demo on an OpenShift hub and a plain
+Kubernetes spoke at the same time — one application each, sharing this repo.
+It was built by actually doing it against an OpenShift 4.19 hub and an EKS
+1.34 cluster, and it is what shook out the portability bugs below.
+
+```bash
+# On the OpenShift hub: Vault platform + payments-api
+kustomize build multicluster/bootstrap-hub | oc --kubeconfig=$HUB apply -f -
+
+# On the spoke: Vault platform + inventory-web
+kustomize build multicluster/bootstrap-eks | oc --kubeconfig=$EKS apply -f -
+```
+
+Neither directory duplicates an Application manifest — both pull in
+[apps/](apps/) and patch it, dropping the app that belongs to the other cluster
+and repointing paths at the right overlay.
+
+**Vault runs on both clusters, not just the hub.** Agent injection is a
+mutating admission webhook, so it can only inject into pods in its own cluster.
+There is no such thing as injecting across a cluster boundary.
+
+**What has to differ on a non-OpenShift cluster**, and why:
+
+| | OpenShift | Plain Kubernetes |
+|---|---|---|
+| Container UID | assigned by the `restricted-v2` SCC | must be set explicitly — `overlays/vanilla` pins `runAsUser: 100` |
+| Exposure | `Route` | no Route; `overlays/eks` stops at the Service |
+
+Both differences live in overlays over an unchanged base. Hardcoding
+`runAsUser: 100` in the base would *break* OpenShift, where `restricted-v2`
+requires a UID from the namespace's allocated range.
+
+### If the Argo CD instance is not cluster-admin
+
+Two things bite, and both are handled in this repo:
+
+- **Namespaced RBAC.** The controller can only manage namespaces labelled
+  `argocd.argoproj.io/managed-by: <argocd-namespace>`. Without it you get
+  `serviceaccounts is forbidden`. The label is on the `vault-demo` Namespace
+  and in both apps' `managedNamespaceMetadata`.
+- **The webhook.** Creating a `MutatingWebhookConfiguration` is a separate
+  privilege — see [Prerequisites](#prerequisites).
 
 ---
 
