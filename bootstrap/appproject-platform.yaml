@@ -29,6 +29,12 @@ spec:
   sourceRepos:
     - https://github.com/MoOyeg/argocd-quick-demo.git
 
+  # Argo CD Agent only: permits Applications authored on the hub in the agent's
+  # namespace. Without it the hub UI lists the spoke's apps but reports that
+  # the project does not permit them. Harmless on a single-cluster install.
+  sourceNamespaces:
+    - eks-cluster-1
+
   destinations:
     - server: https://kubernetes.default.svc
       namespace: openshift-gitops   # the root app manages child Applications here

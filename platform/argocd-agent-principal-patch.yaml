@@ -18,12 +18,40 @@ spec:
         allowedNamespaces:
           - eks-cluster-1
 
+  # Makes the spoke's Applications appear in the hub's Argo CD UI.
+  #
+  # This is passed to argocd-server ONLY, on purpose. The UI lists an
+  # Application solely if the API server was told to serve its namespace;
+  # without this the objects exist on the hub and the agent keeps their status
+  # current, but the UI shows nothing and the apps look like they never
+  # arrived. Add one --application-namespaces entry per agent.
+  server:
+    extraCommandArgs:
+      - --application-namespaces=eks-cluster-1
+
 # DO NOT ALSO SET spec.sourceNamespaces FOR THESE NAMESPACES.
 #
-# It looks like the right thing - "apps in any namespace" is how you normally
-# surface Applications outside the control-plane namespace - but it makes the
-# HUB's own application-controller adopt the agent's Applications and reconcile
-# them against the hub cluster. It then finds none of the spoke's resources
-# locally and overwrites the status the agent reported with OutOfSync/Missing,
-# fighting the principal for the same field. The principal alone owns these
-# objects; the hub controller must not see them.
+# spec.sourceNamespaces is the obvious-looking way to get the same visibility -
+# it is how "apps in any namespace" is normally enabled - but the operator
+# renders it into argocd-cmd-params-cm as a GLOBAL application.namespaces,
+# which reaches the application-controller as well as the API server. The hub
+# controller then adopts the agent's Applications, reconciles them against the
+# HUB cluster, finds none of the spoke's resources there, and overwrites the
+# status the agent reported with OutOfSync/Missing - fighting the principal
+# over the same field. (Observed directly: a status patched by hand on the hub
+# was reverted to OutOfSync/Missing within seconds.)
+#
+# server.extraCommandArgs above avoids that by reaching only argocd-server.
+# The split is the whole point:
+#   argocd-server               -> must know the namespace, so the UI lists it
+#   argocd-application-controller -> must NOT, so it leaves the agent alone
+#
+# Verify the controller stayed out of it:
+#   oc get cm argocd-cmd-params-cm -n openshift-gitops -o yaml | grep namespaces
+# should return nothing.
+
+# The AppProjects also need to permit that source namespace, or the UI lists
+# the app and then refuses it. Both demo projects carry:
+#   spec:
+#     sourceNamespaces:
+#       - eks-cluster-1
