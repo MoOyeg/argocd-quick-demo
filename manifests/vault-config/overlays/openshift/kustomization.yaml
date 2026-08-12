@@ -1,0 +1,7 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# OpenShift flavour of the Vault seed job. Nothing to add - the SCC assigns
+# the UID. See ../vanilla for why a plain Kubernetes cluster needs more.
+resources:
+  - ../../base

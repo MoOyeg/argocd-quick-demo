@@ -36,6 +36,26 @@ patches:
         path: /metadata/annotations/argocd.argoproj.io~1sync-wave
         value: "2"
 
+  # EKS has no SCC to assign a UID, so the Vault workloads need the vanilla
+  # overlays that pin runAsUser explicitly. See
+  # manifests/vault/overlays/vanilla for the full explanation.
+  - target:
+      group: argoproj.io
+      kind: Application
+      name: vault
+    patch: |
+      - op: replace
+        path: /spec/source/path
+        value: manifests/vault/overlays/vanilla
+  - target:
+      group: argoproj.io
+      kind: Application
+      name: vault-config
+    patch: |
+      - op: replace
+        path: /spec/source/path
+        value: manifests/vault-config/overlays/vanilla
+
 labels:
   - includeSelectors: false
     pairs:

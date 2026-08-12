@@ -1,0 +1,40 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Vanilla-Kubernetes flavour of the Vault platform (EKS, GKE, AKS, kind...).
+#
+# WHY THIS OVERLAY EXISTS
+# The base sets runAsNonRoot: true and leaves the UID to OpenShift's SCC. On a
+# cluster with no SCC nothing assigns a UID, so the kubelet checks the image
+# instead - and both HashiCorp images fail that check:
+#
+#   hashicorp/vault      USER is unset      -> "image will run as root"
+#   hashicorp/vault-k8s  USER is "vault"    -> non-numeric, cannot be verified
+#
+# Either way the pod never starts:
+#   Error: container has runAsNonRoot and image will run as root
+#
+# So this overlay pins the UID explicitly. 100 is the vault user inside both
+# images. Doing this in the base would break OpenShift, where restricted-v2
+# requires a UID from the namespace's allocated range.
+resources:
+  - ../../base
+
+patches:
+  - path: runasuser-patch.yaml
+    target:
+      group: apps
+      version: v1
+      kind: Deployment
+      name: vault
+  - path: runasuser-injector-patch.yaml
+    target:
+      group: apps
+      version: v1
+      kind: Deployment
+      name: vault-agent-injector
+
+labels:
+  - includeSelectors: false
+    pairs:
+      demo.redhat.com/platform: vanilla-kubernetes

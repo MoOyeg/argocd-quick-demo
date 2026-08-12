@@ -37,6 +37,11 @@ spec:
       labels:
         app.kubernetes.io/part-of: payments-demo
         demo.redhat.com/vault-injection: enabled
+        # Lets the OpenShift GitOps operator grant the application-controller
+        # namespaced RBAC here. Required on any Argo CD instance that does not
+        # hold cluster-admin - without it the sync fails with
+        # "serviceaccounts is forbidden". Harmless on non-OpenShift.
+        argocd.argoproj.io/managed-by: openshift-gitops
       annotations:
         openshift.io/display-name: Payments API (demo)
     retry:

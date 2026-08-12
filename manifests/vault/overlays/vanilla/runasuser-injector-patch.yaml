@@ -1,0 +1,18 @@
+---
+# Pin the Vault agent injector to the vault user (UID 100) baked into the image.
+# The container name must match the base exactly ("sidecar-injector") - a
+# strategic-merge patch with a name that does not exist silently ADDS a second
+# container rather than failing.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vault-agent-injector
+  namespace: vault-demo
+spec:
+  template:
+    spec:
+      containers:
+        - name: sidecar-injector
+          securityContext:
+            runAsUser: 100
+            runAsGroup: 1000

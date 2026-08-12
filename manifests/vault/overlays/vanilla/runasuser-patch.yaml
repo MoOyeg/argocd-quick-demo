@@ -1,0 +1,18 @@
+---
+# Pin the Vault server to the vault user (UID 100) baked into the image.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vault
+  namespace: vault-demo
+spec:
+  template:
+    spec:
+      securityContext:
+        # fsGroup so the emptyDir mounted at /home/vault is writable.
+        fsGroup: 1000
+      containers:
+        - name: vault
+          securityContext:
+            runAsUser: 100
+            runAsGroup: 1000

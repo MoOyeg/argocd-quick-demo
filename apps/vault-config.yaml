@@ -17,7 +17,7 @@ spec:
   source:
     repoURL: https://github.com/MoOyeg/argocd-quick-demo.git
     targetRevision: main
-    path: manifests/vault-config
+    path: manifests/vault-config/overlays/openshift
   destination:
     server: https://kubernetes.default.svc
     namespace: vault-demo

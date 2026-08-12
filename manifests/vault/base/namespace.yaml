@@ -1,0 +1,19 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: vault-demo
+  annotations:
+    # WAVE -1: the namespace has to exist before anything is placed inside it.
+    argocd.argoproj.io/sync-wave: "-1"
+    openshift.io/display-name: Vault (demo)
+  labels:
+    # REQUIRED unless the Argo CD application-controller holds cluster-admin.
+    # The OpenShift GitOps operator watches for this label and creates the
+    # Role/RoleBinding that let the controller manage namespaced resources
+    # here. Without it the sync fails with:
+    #   serviceaccounts is forbidden: User
+    #   "system:serviceaccount:openshift-gitops:openshift-gitops-argocd-application-controller"
+    #   cannot create resource "serviceaccounts" in the namespace "vault-demo"
+    # The value is the namespace of the Argo CD instance, not its name.
+    argocd.argoproj.io/managed-by: openshift-gitops
