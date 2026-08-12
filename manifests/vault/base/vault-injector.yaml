@@ -35,10 +35,13 @@ spec:
       containers:
         - name: sidecar-injector
           image: docker.io/hashicorp/vault-k8s:1.7.6
-          command:
-            - /vault-k8s
+          # Use the image ENTRYPOINT rather than hardcoding the binary path.
+          # The Helm chart pins `command: ["/vault-k8s", ...]`, but the binary
+          # moved to /bin/vault-k8s in 1.7.x, which fails at container create
+          # with "executable file `/vault-k8s` not found". Passing only args
+          # survives that kind of change.
+          args:
             - agent-inject
-            - 2>&1
           env:
             - name: AGENT_INJECT_LISTEN
               value: ":8080"
