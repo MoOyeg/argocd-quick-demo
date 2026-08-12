@@ -4,17 +4,18 @@ kind: Kustomization
 namespace: inventory-demo
 
 # The point of this overlay: the SAME base runs on a non-OpenShift cluster.
-# The only structural difference is that nothing here adds a Route - exposure
-# is an environment decision, which is exactly why the base stops at the
-# Service (see manifests/inventory-web/base/service.yaml).
+# The only structural difference is how it gets exposed - which is exactly why
+# the base stops at a ClusterIP Service (see manifests/inventory-web/base/
+# service.yaml). OpenShift gets a Route in overlays/demo; here the Service is
+# promoted to type: LoadBalancer.
 #
-# Reach it with:
-#   kubectl -n inventory-demo port-forward svc/inventory-web 8080:8080
-#
-# On a cluster with an ingress controller or the AWS Load Balancer Controller,
-# add an Ingress here or patch the Service to type: LoadBalancer.
+# Requires an ingress controller in the cluster. OpenShift ships one; a plain
+# EKS cluster does not, so install one first (see the README). Get the URL:
+#   kubectl -n inventory-demo get ingress inventory-web \
+#     -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
 resources:
   - ../../base
+  - ingress.yaml
 
 configMapGenerator:
   - name: inventory-web-env

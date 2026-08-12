@@ -1,0 +1,45 @@
+---
+# Exposure for the plain-Kubernetes overlay.
+#
+# The OpenShift overlay of the other app uses a Route for exactly this job;
+# outside OpenShift the equivalent is an Ingress. Both live in the overlay, not
+# the base, because how an app is exposed is an environment decision.
+#
+# No `host:` is set on purpose. This demo has no DNS name to point at the
+# cluster, and a host-less rule matches any Host header, so the ingress
+# controller's own external address serves it directly. In anything real, set
+# a host and a TLS block:
+#
+#   spec:
+#     tls:
+#       - hosts: [inventory.example.com]
+#         secretName: inventory-web-tls
+#     rules:
+#       - host: inventory.example.com
+#         ...
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: inventory-web
+  namespace: inventory-demo
+  annotations:
+    # WAVE 3 - alongside the Service, after the Deployment is in.
+    argocd.argoproj.io/sync-wave: "3"
+  labels:
+    app.kubernetes.io/name: inventory-web
+spec:
+  # Must match an IngressClass that exists in the cluster. OpenShift ships a
+  # router; a plain EKS cluster ships nothing, so an ingress controller has to
+  # be installed or this Ingress is created and then never programmed - it will
+  # sit for ever with an empty .status.loadBalancer.
+  ingressClassName: nginx
+  rules:
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: inventory-web
+                port:
+                  number: 8080

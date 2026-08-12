@@ -5,6 +5,10 @@ namespace: payments-demo
 
 resources:
   - ../../base
+  # Exposure is an environment decision, so it lives here rather than in the
+  # base. This overlay targets OpenShift, so it gets a Route; the EKS overlay
+  # of the other app gets an Ingress instead. Same base either way.
+  - route.yaml
 
 # ---------------------------------------------------------------------------
 # OVERLAY CONFIG - override individual key=value properties, no file copying

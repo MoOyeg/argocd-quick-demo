@@ -64,8 +64,12 @@ spec:
       kind: Secret
     - group: apps
       kind: Deployment
+    # Both exposure mechanisms: Route on OpenShift, Ingress everywhere else.
+    # Which one an app actually creates is decided by its overlay.
     - group: route.openshift.io
       kind: Route
+    - group: networking.k8s.io
+      kind: Ingress
 
   # Namespaced RBAC escalation is blocked too - an app team cannot grant
   # itself a Role inside its own namespace via GitOps.
