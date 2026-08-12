@@ -129,13 +129,27 @@ spec:
       port: 443
       targetPort: 8080
 ---
-# WAVE 3: register the webhook last, once the injector is actually serving.
+# WAVE 1: the webhook must exist BEFORE the injector Deployment in wave 2.
+#
+# This looks backwards and originally was: the webhook was in wave 3, "register
+# it last, once the injector is serving". That deadlocks. The injector's
+# AGENT_INJECT_TLS_AUTO startup path generates a cert and patches it into THIS
+# object, and until it finds it the injector serves no certificate:
+#
+#   certwatcher: Fetching webhook config directly failed:
+#     mutatingwebhookconfigurations "vault-agent-injector-cfg" not found
+#   handler: http: TLS handshake error: no certificate available
+#
+# so its readiness probe never passes, so wave 2 never becomes Healthy, so Argo
+# CD never starts wave 3 and never creates the webhook. CrashLoopBackOff for
+# ever. Creating it first is safe: failurePolicy is Ignore and the
+# namespaceSelector matches nothing until an application namespace opts in.
 apiVersion: admissionregistration.k8s.io/v1
 kind: MutatingWebhookConfiguration
 metadata:
   name: vault-agent-injector-cfg
   annotations:
-    argocd.argoproj.io/sync-wave: "3"
+    argocd.argoproj.io/sync-wave: "1"
   labels:
     app.kubernetes.io/name: vault-agent-injector
 webhooks:
