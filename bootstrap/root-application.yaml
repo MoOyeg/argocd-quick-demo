@@ -1,0 +1,44 @@
+---
+# APP OF APPS ---------------------------------------------------------------
+# This is the only thing you apply by hand. It points at apps/, which contains
+# nothing but Argo CD Application manifests. Argo CD syncs those Applications
+# into openshift-gitops, and each of them in turn syncs a real workload.
+#
+#   demo-root  ->  apps/vault.yaml        (sync-wave 0)  project: demo-platform
+#              ->  apps/vault-config.yaml (sync-wave 1)  project: demo-platform
+#              ->  apps/payments-api.yaml (sync-wave 2)  project: demo-apps
+#              ->  apps/inventory-web.yaml(sync-wave 3)  project: demo-apps
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: demo-root
+  namespace: openshift-gitops
+  annotations:
+    # Practice: "Monorepo scaling considerations". Without this, a commit that
+    # touches only manifests/payments-api/ invalidates the repo-server cache
+    # for every Application in the repo and they all re-render. This annotation
+    # tells Argo CD that only changes under /apps can affect this Application.
+    argocd.argoproj.io/manifest-generate-paths: /apps
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: demo-platform
+  source:
+    repoURL: __REPO_URL__
+    # Practice: "Version manifests". Point this at a git tag or a commit SHA,
+    # not at a branch. ./scripts/set-repo.sh warns when you pass a branch.
+    targetRevision: __TARGET_REVISION__
+    path: apps
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: openshift-gitops
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    retry:
+      limit: 5
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 3m

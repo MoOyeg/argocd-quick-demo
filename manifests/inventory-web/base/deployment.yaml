@@ -1,0 +1,125 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: inventory-web
+  namespace: inventory-demo
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+  labels:
+    app.kubernetes.io/name: inventory-web
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: inventory-web
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: inventory-web
+      annotations:
+        # ---- VAULT AGENT INJECTION -------------------------------------
+        vault.hashicorp.com/agent-inject: "true"
+        vault.hashicorp.com/role: "inventory-web"
+        vault.hashicorp.com/agent-set-security-context: "false"
+        vault.hashicorp.com/agent-inject-status: "update"
+        # Keep the sidecar alive so the file is re-rendered when the secret
+        # rotates in Vault (payments-api uses the same default; set
+        # agent-pre-populate-only=true if you only want the init container).
+        vault.hashicorp.com/agent-inject-secret-api.properties: "secret/data/inventory-web/api"
+        # This template does not name each key. It ranges over the whole KV
+        # entry and emits key=value lines, so adding a field in Vault adds a
+        # property here with no manifest change.
+        vault.hashicorp.com/agent-inject-template-api.properties: |
+          {{- with secret "secret/data/inventory-web/api" -}}
+          {{- range $k, $v := .Data.data }}
+          {{ $k }}={{ $v }}
+          {{- end }}
+          {{- end }}
+        # A second injected file, no template: the agent's default rendering.
+        vault.hashicorp.com/agent-inject-secret-api-raw.txt: "secret/data/inventory-web/api"
+    spec:
+      serviceAccountName: inventory-web
+      containers:
+        - name: app
+          image: registry.access.redhat.com/ubi9/python-311:1-1762197673
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -eu
+              WWW=/tmp/www
+              mkdir -p "$WWW"
+              {
+                echo "<html><head><title>${APP_NAME}</title>"
+                echo "<style>body{font-family:monospace;margin:2rem;max-width:60rem}"
+                echo "pre{background:#f4f4f4;padding:1rem;overflow-x:auto}h2{margin-top:2rem}</style>"
+                echo "</head><body>"
+                echo "<h1>${APP_NAME} v${APP_VERSION} &mdash; env: ${APP_ENV}</h1>"
+
+                echo "<h2>1. ConfigMap as env vars (configMapGenerator envs:)</h2><pre>"
+                env | grep -E '^(APP_|LOG_|SERVER_|INVENTORY_)' | sort || true
+                echo "</pre>"
+
+                echo "<h2>2. ConfigMap as a mounted file (configMapGenerator files:)</h2><pre>"
+                cat /opt/app/config/ui.properties 2>/dev/null || echo "not mounted"
+                echo "</pre>"
+
+                echo "<h2>3. Secret as a mounted file (secretGenerator files:)</h2><pre>"
+                cat /opt/app/secrets/session.properties 2>/dev/null || echo "not mounted"
+                echo "</pre>"
+
+                echo "<h2>4. Vault-injected secret (/vault/secrets/api.properties)</h2><pre>"
+                if [ -f /vault/secrets/api.properties ]; then
+                  sed -E 's/^(api_key=|webhook_signing_key=).*/\1********/' /vault/secrets/api.properties
+                  echo ""
+                  echo "# rendered from secret/data/inventory-web/api by the agent"
+                  echo "# sidecar, using a range template - no key names in the manifest."
+                else
+                  echo "NOT INJECTED"
+                  echo "check the vault-agent-injector pod and the inventory-web Vault role."
+                fi
+                echo "</pre></body></html>"
+              } > "$WWW/index.html"
+              cd "$WWW"
+              exec python3 -m http.server "${SERVER_PORT}"
+          envFrom:
+            - configMapRef:
+                name: inventory-web-env
+          ports:
+            - name: http
+              containerPort: 8080
+          volumeMounts:
+            - name: ui-config
+              mountPath: /opt/app/config
+              readOnly: true
+            - name: session-config
+              mountPath: /opt/app/secrets
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+      volumes:
+        - name: ui-config
+          configMap:
+            name: inventory-web-ui
+        - name: session-config
+          secret:
+            secretName: inventory-web-session

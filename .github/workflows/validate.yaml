@@ -1,0 +1,46 @@
+---
+# Practice: "Validate manifests via Linting".
+#
+# Catch broken manifests in the pull request, not in a failed Argo CD sync.
+# Runs exactly what ./scripts/validate.sh runs locally, plus kubeconform.
+name: validate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install kustomize
+        run: |
+          curl -sSL "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+          sudo mv kustomize /usr/local/bin/
+          kustomize version
+
+      - name: Install kubeconform
+        run: |
+          VERSION=v0.6.7
+          curl -sSL "https://github.com/yannh/kubeconform/releases/download/${VERSION}/kubeconform-linux-amd64.tar.gz" \
+            | tar -xz kubeconform
+          sudo mv kubeconform /usr/local/bin/
+          kubeconform -v
+
+      - name: Render, schema-check and policy-check
+        run: ./scripts/validate.sh
+
+      - name: Check shell scripts
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
+          # --severity=error only: these are demo helper scripts, and style
+          # warnings should not turn the repo's CI red. Raise it to "warning"
+          # if you adopt this repo as the basis for something real.
+          shellcheck --severity=error scripts/*.sh manifests/vault-config/scripts/*.sh

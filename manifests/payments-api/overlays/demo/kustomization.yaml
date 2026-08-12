@@ -1,0 +1,53 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: payments-demo
+
+resources:
+  - ../../base
+
+# ---------------------------------------------------------------------------
+# OVERLAY CONFIG - override individual key=value properties, no file copying
+# ---------------------------------------------------------------------------
+# behavior: merge takes the base generator's keys and applies these on top.
+# APP_ENV and LOG_LEVEL already exist in application.properties and get
+# replaced; PAYMENTS_FEATURE_FLAGS is new and gets added.
+configMapGenerator:
+  - name: payments-api-env
+    behavior: merge
+    literals:
+      - APP_ENV=demo
+      - LOG_LEVEL=debug
+      - PAYMENTS_MAX_AMOUNT=25000
+      - PAYMENTS_FEATURE_FLAGS=instant-settlement,partial-refunds
+    options:
+      annotations:
+        argocd.argoproj.io/sync-wave: "1"
+
+secretGenerator:
+  - name: payments-api-bootstrap
+    behavior: merge
+    literals:
+      - TELEMETRY_TOKEN=demo-overlay-telemetry-token
+    type: Opaque
+    options:
+      annotations:
+        argocd.argoproj.io/sync-wave: "1"
+
+# Practice: "Version manifests". Never :latest - it makes a re-sync
+# non-deterministic and defeats the whole point of declarative delivery.
+# Pinned to a digest here rather than in the base, so different overlays can
+# ride different builds.
+images:
+  - name: registry.access.redhat.com/ubi9/python-311
+    newTag: 1-1762197673
+    digest: sha256:d0b35f779ca0ae87deaf17cd1923461904f52d3ef249a53dbd487e02bdabdde6
+
+replicas:
+  - name: payments-api
+    count: 1
+
+labels:
+  - includeSelectors: false
+    pairs:
+      demo.redhat.com/overlay: demo

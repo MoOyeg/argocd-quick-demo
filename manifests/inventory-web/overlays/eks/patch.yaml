@@ -1,0 +1,24 @@
+---
+# A strategic-merge patch. Kustomize matches on apiVersion/kind/name and merges
+# only the fields present here, so the rest of the base Deployment is untouched.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: inventory-web
+  # The namespace must be here too: the base sets namespace: inventory-demo, so
+  # a patch without it targets "no namespace" and kustomize finds no match.
+  namespace: inventory-demo
+spec:
+  template:
+    metadata:
+      annotations:
+        # Shorten the agent's re-render interval so a `vault kv put` shows up
+        # in the running Pod within about 30s - useful during a live demo.
+        vault.hashicorp.com/agent-cache-enable: "false"
+        vault.hashicorp.com/template-static-secret-render-interval: "30s"
+    spec:
+      containers:
+        - name: app
+          env:
+            - name: DEMO_BANNER
+              value: "patched by the eks overlay"

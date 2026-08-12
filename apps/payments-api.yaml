@@ -1,0 +1,47 @@
+---
+# WAVE 2 - first example app.
+# Config comes from kustomize generators; credentials come from Vault injection.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: payments-api
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+    # Covers base/ and overlays/, so a change to either re-renders this app -
+    # and a change to inventory-web does not.
+    argocd.argoproj.io/manifest-generate-paths: /manifests/payments-api
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  # No cluster-scoped RBAC. Restricted project.
+  project: demo-apps
+  source:
+    repoURL: __REPO_URL__
+    targetRevision: __TARGET_REVISION__
+    path: manifests/payments-api/overlays/demo
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: payments-demo
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      # Let Argo CD own the namespace rather than shipping a Namespace manifest
+      # in the app. Keeps cluster-scoped objects out of the application layer.
+      - CreateNamespace=true
+    # Labels/annotations applied to the namespace Argo CD creates. This is how
+    # you get PodSecurity or Vault-injection opt-in labels onto a namespace
+    # without hand-writing the Namespace object.
+    managedNamespaceMetadata:
+      labels:
+        app.kubernetes.io/part-of: payments-demo
+        demo.redhat.com/vault-injection: enabled
+      annotations:
+        openshift.io/display-name: Payments API (demo)
+    retry:
+      limit: 5
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 3m

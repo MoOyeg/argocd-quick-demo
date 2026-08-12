@@ -1,0 +1,20 @@
+---
+# The base deliberately stops at the Service. Exposure is an environment
+# decision, so the Route lives in overlays/demo/route.yaml - a base that is
+# genuinely reusable should not assume it is internet-facing.
+apiVersion: v1
+kind: Service
+metadata:
+  name: inventory-web
+  namespace: inventory-demo
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+  labels:
+    app.kubernetes.io/name: inventory-web
+spec:
+  selector:
+    app.kubernetes.io/name: inventory-web
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080

@@ -1,0 +1,85 @@
+# Instance-level settings for the openshift-gitops Argo CD instance.
+#
+# Applied once, BEFORE bootstrap/, with:
+#   oc patch argocd openshift-gitops -n openshift-gitops \
+#     --type=merge --patch-file platform/argocd-openshift-gitops-patch.yaml
+#
+# This file is deliberately NOT part of the app-of-apps. An Argo CD instance
+# managing its own configuration is a chicken-and-egg problem: a bad sync can
+# take out the controller that would have fixed it. In a real setup this lives
+# in a cluster-configuration repo owned by the platform team, synced by a
+# *different* Argo CD instance.
+spec:
+  # Practice: "Use annotation tracking".
+  # The default (label tracking) writes app.kubernetes.io/instance onto every
+  # managed resource. That label is capped at 63 characters and operators
+  # frequently copy it onto resources they generate, which makes Argo CD adopt
+  # objects it does not own and report permanent false-positive drift.
+  # Annotation tracking stores group/kind/namespace/name instead, so ownership
+  # is unambiguous. Becomes the default in Argo CD 3.0.
+  resourceTrackingMethod: annotation
+
+  # Practice: "Use resource inclusion/exclusion to minimize managed resources".
+  # OpenShift ships a lot of CRDs. Every kind Argo CD watches costs memory in
+  # the controller and watch load on the API server and etcd. Exclude the
+  # high-churn kinds nothing in this repo manages.
+  #
+  # TUNE THIS FOR YOUR CLUSTER - the list below is an example, not a standard.
+  resourceExclusions: |
+    - apiGroups:
+        - tekton.dev
+      kinds:
+        - TaskRun
+        - PipelineRun
+      clusters:
+        - "*"
+    - apiGroups:
+        - machineconfiguration.openshift.io
+      kinds:
+        - MachineConfig
+      clusters:
+        - "*"
+    - apiGroups:
+        - metrics.k8s.io
+      kinds:
+        - "*"
+      clusters:
+        - "*"
+    - apiGroups:
+        - image.openshift.io
+      kinds:
+        - ImageStreamTag
+        - ImageTag
+      clusters:
+        - "*"
+
+  extraConfig:
+    # The newer, lower-maintenance half of the same practice: instead of
+    # curating the exclusion list by hand, let Argo CD skip anything the
+    # controller's ServiceAccount has no RBAC for.
+    resource.respectRBAC: normal
+
+    # Practice: "Use Global AppProject for common settings".
+    # Settings defined on demo-global are inherited by every AppProject
+    # carrying the label below, so shared sync windows and resource
+    # restrictions live in one place instead of being copy-pasted per tenant.
+    #
+    # Enable together with platform/appproject-global.yaml. Note that
+    # inheritance is additive for allow-lists and that a deny-list entry on the
+    # global project overrides a tenant's allow-list - so keep global
+    # blacklists to things NO tenant may ever create.
+    globalProjects: |
+      - projectName: demo-global
+        labelSelector:
+          matchExpressions:
+            - key: demo.redhat.com/global-project
+              operator: In
+              values:
+                - demo
+
+# NOT SETTABLE HERE ----------------------------------------------------------
+# Practice: "Persist health status in Redis" (controller.resource.health.persist
+# = false) is an argocd-cmd-params-cm setting, not an ArgoCD CR field, and the
+# operator reconciles that ConfigMap. It is the default from Argo CD 3.0 /
+# OpenShift GitOps 1.15 onward, so on a current install there is nothing to do.
+# On older versions the article's advice applies but the gain is modest.

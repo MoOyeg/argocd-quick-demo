@@ -1,0 +1,63 @@
+---
+# WAVE 0: identities and permissions, before any workload starts.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: vault
+  namespace: vault-demo
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+---
+# Vault's Kubernetes auth method validates the ServiceAccount tokens presented
+# by the Vault Agent sidecars. To do that it calls the TokenReview API, which
+# requires system:auth-delegator.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: vault-demo-tokenreview
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:auth-delegator
+subjects:
+  - kind: ServiceAccount
+    name: vault
+    namespace: vault-demo
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: vault-agent-injector
+  namespace: vault-demo
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+---
+# The injector generates its own serving cert and patches the CA bundle into
+# its own MutatingWebhookConfiguration, so it needs to be able to patch it.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: vault-demo-agent-injector
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+rules:
+  - apiGroups: ["admissionregistration.k8s.io"]
+    resources: ["mutatingwebhookconfigurations"]
+    verbs: ["get", "list", "watch", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: vault-demo-agent-injector
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: vault-demo-agent-injector
+subjects:
+  - kind: ServiceAccount
+    name: vault-agent-injector
+    namespace: vault-demo

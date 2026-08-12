@@ -1,0 +1,33 @@
+---
+# WAVE 1 - seed Vault. Enables the Kubernetes auth method, writes the KV
+# secrets the two apps will read, and creates one policy + role per app.
+# Runs as a Sync hook so it re-runs on every sync instead of failing on the
+# "Job spec is immutable" error.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: vault-config
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+    argocd.argoproj.io/manifest-generate-paths: /manifests/vault-config
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: demo-platform
+  source:
+    repoURL: __REPO_URL__
+    targetRevision: __TARGET_REVISION__
+    path: manifests/vault-config
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: vault-demo
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    retry:
+      limit: 5
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 3m

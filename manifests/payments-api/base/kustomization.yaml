@@ -1,0 +1,58 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: payments-demo
+
+resources:
+  - serviceaccount.yaml
+  - deployment.yaml
+  - service.yaml
+  - route.yaml
+
+# ---------------------------------------------------------------------------
+# CONFIGMAP GENERATION - two idioms from the same key=value format
+# ---------------------------------------------------------------------------
+configMapGenerator:
+  # envs: parses key=value lines and makes each line a ConfigMap key.
+  # Consumed with envFrom, so every property becomes an env var.
+  - name: payments-api-env
+    envs:
+      - config/application.properties
+    options:
+      annotations:
+        # WAVE 1 - config must land before the Deployment in wave 2.
+        argocd.argoproj.io/sync-wave: "1"
+
+  # files: stores the file whole, under the key "logging.properties".
+  # Consumed as a volume mount, so the app reads a real properties file.
+  - name: payments-api-props
+    files:
+      - config/logging.properties
+    options:
+      annotations:
+        argocd.argoproj.io/sync-wave: "1"
+
+# ---------------------------------------------------------------------------
+# SECRET GENERATION - same key=value format, base64 at build time
+# ---------------------------------------------------------------------------
+secretGenerator:
+  - name: payments-api-bootstrap
+    envs:
+      - config/bootstrap-secret.env
+    type: Opaque
+    options:
+      annotations:
+        argocd.argoproj.io/sync-wave: "1"
+
+# Both generators append a content hash to the resource name
+# (payments-api-env-9f2k4tb8mc). Kustomize then rewrites every reference to
+# them - envFrom, volumes - to the hashed name. Change one property and the
+# name changes, which makes the Deployment roll automatically. That is the
+# main reason to generate config instead of hand-writing ConfigMap YAML.
+generatorOptions:
+  disableNameSuffixHash: false
+
+labels:
+  - includeSelectors: false
+    pairs:
+      app.kubernetes.io/part-of: payments-demo

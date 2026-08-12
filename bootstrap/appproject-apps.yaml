@@ -1,0 +1,91 @@
+---
+# APPLICATION project - workloads only.
+#
+# Deliberately weaker than demo-platform:
+#   * no ClusterRole / ClusterRoleBinding / webhook permissions
+#   * destinations limited to the two application namespaces
+#   * Namespace is the only cluster-scoped kind, and only because the
+#     Applications use CreateNamespace=true with managedNamespaceMetadata
+#
+# If payments-api tried to ship a ClusterRoleBinding, the sync would be
+# rejected by the project rather than silently granted.
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: demo-apps
+  namespace: openshift-gitops
+  labels:
+    demo.redhat.com/tier: application
+    # Opts this project into the demo-global AppProject (optional -
+    # see platform/appproject-global.yaml). Inert until enabled.
+    demo.redhat.com/global-project: demo
+spec:
+  description: Application workloads for the GitOps demo
+
+  sourceRepos:
+    - __REPO_URL__
+
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: payments-demo
+    - server: https://kubernetes.default.svc
+      namespace: inventory-demo
+
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+
+  # Explicitly deny the escalation paths, so this stays true even if someone
+  # widens the whitelist later. Blacklist beats whitelist in Argo CD.
+  clusterResourceBlacklist:
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRole
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRoleBinding
+    - group: admissionregistration.k8s.io
+      kind: MutatingWebhookConfiguration
+    - group: admissionregistration.k8s.io
+      kind: ValidatingWebhookConfiguration
+
+  namespaceResourceWhitelist:
+    - group: ""
+      kind: ServiceAccount
+    - group: ""
+      kind: Service
+    - group: ""
+      kind: ConfigMap
+    - group: ""
+      kind: Secret
+    - group: apps
+      kind: Deployment
+    - group: route.openshift.io
+      kind: Route
+
+  # Namespaced RBAC escalation is blocked too - an app team cannot grant
+  # itself a Role inside its own namespace via GitOps.
+  namespaceResourceBlacklist:
+    - group: rbac.authorization.k8s.io
+      kind: Role
+    - group: rbac.authorization.k8s.io
+      kind: RoleBinding
+    - group: ""
+      kind: ResourceQuota
+    - group: ""
+      kind: LimitRange
+
+  roles:
+    - name: developer
+      description: Application team - may view and sync, may not change project config
+      policies:
+        - p, proj:demo-apps:developer, applications, get, demo-apps/*, allow
+        - p, proj:demo-apps:developer, applications, sync, demo-apps/*, allow
+        - p, proj:demo-apps:developer, applications, action/*, demo-apps/*, allow
+        - p, proj:demo-apps:developer, logs, get, demo-apps/*, allow
+      groups:
+        - demo-developers
+    - name: viewer
+      description: Read-only
+      policies:
+        - p, proj:demo-apps:viewer, applications, get, demo-apps/*, allow
+      groups:
+        - demo-viewers

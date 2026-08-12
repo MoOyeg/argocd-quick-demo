@@ -1,0 +1,18 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: payments-api
+  namespace: payments-demo
+  annotations:
+    # WAVE 3 - expose only after the Deployment is in.
+    argocd.argoproj.io/sync-wave: "3"
+  labels:
+    app.kubernetes.io/name: payments-api
+spec:
+  selector:
+    app.kubernetes.io/name: payments-api
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080

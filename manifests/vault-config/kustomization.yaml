@@ -1,0 +1,33 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: vault-demo
+
+resources:
+  - job.yaml
+
+# The seed script as a ConfigMap, generated from the real file on disk. Editing
+# scripts/seed-vault.sh changes the ConfigMap hash, which makes Argo CD show a
+# diff and re-run the hook.
+configMapGenerator:
+  - name: vault-seed-scripts
+    files:
+      - scripts/seed-vault.sh
+    options:
+      annotations:
+        argocd.argoproj.io/sync-wave: "0"
+
+# The values pushed into Vault, generated from a key=value properties file.
+secretGenerator:
+  - name: vault-seed-values
+    envs:
+      - config/seed.env
+    options:
+      annotations:
+        argocd.argoproj.io/sync-wave: "0"
+
+# Digest-pinned, same version as the Vault server.
+images:
+  - name: docker.io/hashicorp/vault
+    newTag: 1.21.4
+    digest: sha256:4e33b126a59c0c333b76fb4e894722462659a6bec7c48c9ee8cea56fccfd2569

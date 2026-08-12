@@ -1,0 +1,18 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Every Application CR must land in the Argo CD control-plane namespace.
+namespace: openshift-gitops
+
+# Order here is irrelevant - the argocd.argoproj.io/sync-wave annotation on
+# each Application is what sequences the rollout.
+resources:
+  - vault.yaml
+  - vault-config.yaml
+  - payments-api.yaml
+  - inventory-web.yaml
+
+labels:
+  - includeSelectors: false
+    pairs:
+      demo.redhat.com/part-of: argocd-quick-demo

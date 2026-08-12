@@ -1,0 +1,9 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: vault-demo
+  annotations:
+    # WAVE -1: the namespace has to exist before anything is placed inside it.
+    argocd.argoproj.io/sync-wave: "-1"
+    openshift.io/display-name: Vault (demo)

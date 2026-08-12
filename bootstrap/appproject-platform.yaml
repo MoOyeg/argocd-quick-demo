@@ -1,0 +1,85 @@
+---
+# PLATFORM project - cluster configuration.
+#
+# Practice: "Do not use the Default AppProject."
+# Practice: "Minimize the Application-Controller privileges."
+#
+# Split into two projects on purpose. This one is the only thing allowed to
+# create cluster-scoped objects (Vault needs a ClusterRoleBinding and a
+# MutatingWebhookConfiguration). The demo-apps project next door gets none of
+# that, so an application team cannot mint cluster-wide permissions for itself
+# even though both projects live on the same Argo CD instance.
+#
+# The article's stronger form of this is two separate Argo CD *instances* -
+# openshift-gitops for cluster config, another for application teams. That is
+# the right shape for a real platform; see README "Recommended practices".
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: demo-platform
+  namespace: openshift-gitops
+  labels:
+    demo.redhat.com/tier: platform
+    # Opts this project into the demo-global AppProject (optional -
+    # see platform/appproject-global.yaml). Inert until enabled.
+    demo.redhat.com/global-project: demo
+spec:
+  description: Cluster configuration for the GitOps demo (Vault platform)
+
+  sourceRepos:
+    - __REPO_URL__
+
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: openshift-gitops   # the root app manages child Applications here
+    - server: https://kubernetes.default.svc
+      namespace: vault-demo
+
+  # Explicit allow-list, not "*". Every kind here exists because something in
+  # manifests/vault/ needs it.
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRole
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRoleBinding
+    - group: admissionregistration.k8s.io
+      kind: MutatingWebhookConfiguration
+
+  namespaceResourceWhitelist:
+    # The app-of-apps root deploys child Application CRs into
+    # openshift-gitops, so this project must permit them. Without it the root
+    # app fails with "Application is not permitted in project demo-platform".
+    # Note this is a privilege in itself - anything that can create
+    # Applications can target any destination the projects allow.
+    - group: argoproj.io
+      kind: Application
+    - group: ""
+      kind: ServiceAccount
+    - group: ""
+      kind: Service
+    - group: ""
+      kind: ConfigMap
+    - group: ""
+      kind: Secret
+    - group: apps
+      kind: Deployment
+    - group: batch
+      kind: Job
+
+  # Practice: "Define Tenant RBAC in AppProject" - kept here rather than in the
+  # global argocd-rbac-cm, which becomes unmaintainable as tenants are added.
+  roles:
+    - name: platform-admin
+      description: Full control of the platform Applications
+      policies:
+        - p, proj:demo-platform:platform-admin, applications, *, demo-platform/*, allow
+      groups:
+        - demo-platform-admins
+    - name: viewer
+      description: Read-only
+      policies:
+        - p, proj:demo-platform:viewer, applications, get, demo-platform/*, allow
+      groups:
+        - demo-viewers

@@ -1,0 +1,52 @@
+---
+# Practice: "Use Global AppProject for common settings".
+#
+# Optional. Apply this together with the globalProjects block in
+# argocd-openshift-gitops-patch.yaml:
+#   oc apply -f platform/appproject-global.yaml
+#
+# Every AppProject labelled demo.redhat.com/global-project=demo inherits what
+# is defined here, so cross-tenant rules are written once. Both demo-platform
+# and demo-apps carry that label.
+#
+# Keep this file conservative. Inheritance is additive for allow-lists, but a
+# blacklist entry here overrides a tenant's whitelist - so only put things here
+# that NO tenant may ever manage.
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: demo-global
+  namespace: openshift-gitops
+spec:
+  description: Settings inherited by every demo AppProject
+
+  # Nothing in this repo should ever manage these, in any tenant.
+  clusterResourceBlacklist:
+    - group: ""
+      kind: Node
+    - group: ""
+      kind: PersistentVolume
+    - group: apiextensions.k8s.io
+      kind: CustomResourceDefinition
+    - group: config.openshift.io
+      kind: "*"
+    - group: machineconfiguration.openshift.io
+      kind: "*"
+    - group: operators.coreos.com
+      kind: "*"
+
+  # No namespaceResourceBlacklist here on purpose. A global deny is absolute -
+  # it beats every tenant's whitelist - so blacklisting something like
+  # ServiceAccount would silently break both apps, which need their own SA for
+  # Vault authentication. Namespaced restrictions belong in the tenant project.
+
+  syncWindows:
+    # Shared change-freeze. Deny syncs during the Friday afternoon window;
+    # manual syncs are still allowed so an operator can override in an incident.
+    - kind: deny
+      schedule: "0 16 * * 5"
+      duration: 8h
+      applications:
+        - "*"
+      manualSync: true
+      timeZone: Europe/London

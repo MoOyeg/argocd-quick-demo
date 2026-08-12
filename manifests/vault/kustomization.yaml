@@ -1,0 +1,33 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: vault-demo
+
+resources:
+  - namespace.yaml
+  - rbac.yaml
+  - vault-server.yaml
+  - vault-injector.yaml
+
+# Practice: "Version manifests" - applies to images too. Pinned by digest, in
+# one place, so a re-sync six months from now deploys the same bits. The tag is
+# kept alongside purely so a human can read the version.
+#
+# Note that AGENT_INJECT_VAULT_IMAGE in vault-injector.yaml is an env var, not
+# a container image, so kustomize will NOT rewrite it - it carries its own
+# digest and must be bumped in step with the vault entry below.
+#
+# To bump:
+#   skopeo inspect --no-tags docker://docker.io/hashicorp/vault:<tag> | jq -r .Digest
+images:
+  - name: docker.io/hashicorp/vault
+    newTag: 1.21.4
+    digest: sha256:4e33b126a59c0c333b76fb4e894722462659a6bec7c48c9ee8cea56fccfd2569
+  - name: docker.io/hashicorp/vault-k8s
+    newTag: 1.7.6
+    digest: sha256:55e27b080c9b0469fd420dfb3631243488c6319504b779423caa46c529a95490
+
+labels:
+  - includeSelectors: false
+    pairs:
+      app.kubernetes.io/part-of: vault-demo

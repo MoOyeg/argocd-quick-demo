@@ -1,0 +1,42 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: inventory-demo
+
+resources:
+  - serviceaccount.yaml
+  - deployment.yaml
+  - service.yaml
+
+configMapGenerator:
+  # key=value -> env vars
+  - name: inventory-web-env
+    envs:
+      - config/application.properties
+    options:
+      annotations:
+        argocd.argoproj.io/sync-wave: "1"
+
+  # whole file -> volume mount
+  - name: inventory-web-ui
+    files:
+      - config/ui.properties
+    options:
+      annotations:
+        argocd.argoproj.io/sync-wave: "1"
+
+# The file-oriented secretGenerator idiom: the properties file is stored under
+# its own key and mounted as a file, rather than exploded into env vars.
+secretGenerator:
+  - name: inventory-web-session
+    files:
+      - config/session.properties
+    type: Opaque
+    options:
+      annotations:
+        argocd.argoproj.io/sync-wave: "1"
+
+labels:
+  - includeSelectors: false
+    pairs:
+      app.kubernetes.io/part-of: inventory-demo

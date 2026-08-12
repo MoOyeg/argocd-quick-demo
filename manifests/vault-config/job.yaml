@@ -1,0 +1,58 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: vault-seed
+  namespace: vault-demo
+  annotations:
+    # A Job spec is immutable, so a plain resource would fail on every re-sync
+    # after the first. Running it as a Sync hook with BeforeHookCreation makes
+    # Argo CD delete and recreate it each time instead.
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    # WAVE 1: after the generated ConfigMap/Secret in wave 0.
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  backoffLimit: 10
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: vault-seed
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: seed
+          image: docker.io/hashicorp/vault:1.21.4
+          command: ["/bin/sh", "/scripts/seed-vault.sh"]
+          env:
+            - name: VAULT_ADDR
+              value: http://vault.vault-demo.svc:8200
+          envFrom:
+            # VAULT_TOKEN plus the demo credentials, from the kustomize
+            # secretGenerator. Kustomize rewrites this name to include the
+            # content hash.
+            - secretRef:
+                name: vault-seed-values
+          volumeMounts:
+            - name: scripts
+              mountPath: /scripts
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+      volumes:
+        - name: scripts
+          configMap:
+            # Also rewritten by kustomize to the hashed name.
+            name: vault-seed-scripts
+            defaultMode: 0755

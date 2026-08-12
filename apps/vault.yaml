@@ -1,0 +1,42 @@
+---
+# WAVE 0 - platform. A dev-mode Vault plus the Vault Agent Injector webhook.
+# Nothing else in the demo can work until this is Healthy.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: vault
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+    argocd.argoproj.io/manifest-generate-paths: /manifests/vault
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  # Cluster-scoped resources (ClusterRoleBinding, MutatingWebhookConfiguration)
+  # so this belongs to the platform project, not demo-apps.
+  project: demo-platform
+  source:
+    repoURL: __REPO_URL__
+    targetRevision: __TARGET_REVISION__
+    path: manifests/vault
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: vault-demo
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    retry:
+      limit: 5
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 3m
+  # The injector writes its own self-signed CA into the webhook at runtime
+  # (AGENT_INJECT_TLS_AUTO). Without this, Argo CD would flap OutOfSync forever
+  # and selfHeal would keep wiping the CA bundle.
+  ignoreDifferences:
+    - group: admissionregistration.k8s.io
+      kind: MutatingWebhookConfiguration
+      name: vault-agent-injector-cfg
+      jsonPointers:
+        - /webhooks/0/clientConfig/caBundle

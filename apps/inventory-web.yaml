@@ -1,0 +1,39 @@
+---
+# WAVE 3 - second example app. Deliberately in a later wave than payments-api
+# so the app-of-apps visibly rolls out left to right in the Argo CD UI.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: inventory-web
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+    argocd.argoproj.io/manifest-generate-paths: /manifests/inventory-web
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: demo-apps
+  source:
+    repoURL: __REPO_URL__
+    targetRevision: __TARGET_REVISION__
+    path: manifests/inventory-web/overlays/demo
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: inventory-demo
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+    managedNamespaceMetadata:
+      labels:
+        app.kubernetes.io/part-of: inventory-demo
+        demo.redhat.com/vault-injection: enabled
+      annotations:
+        openshift.io/display-name: Inventory Web (demo)
+    retry:
+      limit: 5
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 3m

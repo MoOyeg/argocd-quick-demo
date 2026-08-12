@@ -1,0 +1,165 @@
+---
+# WAVE 2: the Vault Agent Injector.
+#
+# This is the piece that makes "secrets via Vault injection" work. It is a
+# mutating admission webhook: when a Pod is created carrying
+# vault.hashicorp.com/* annotations, the injector rewrites the Pod to add a
+# vault-agent-init container (fetches secrets before the app starts) and a
+# vault-agent sidecar (keeps them refreshed), both sharing an in-memory
+# /vault/secrets volume with the app container.
+#
+# The app never holds a Vault token and no Kubernetes Secret is ever created.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vault-agent-injector
+  namespace: vault-demo
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+  labels:
+    app.kubernetes.io/name: vault-agent-injector
+    app.kubernetes.io/component: webhook
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: vault-agent-injector
+      app.kubernetes.io/component: webhook
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: vault-agent-injector
+        app.kubernetes.io/component: webhook
+    spec:
+      serviceAccountName: vault-agent-injector
+      containers:
+        - name: sidecar-injector
+          image: docker.io/hashicorp/vault-k8s:1.7.6
+          command:
+            - /vault-k8s
+            - agent-inject
+            - 2>&1
+          env:
+            - name: AGENT_INJECT_LISTEN
+              value: ":8080"
+            - name: AGENT_INJECT_LOG_LEVEL
+              value: info
+            - name: AGENT_INJECT_LOG_FORMAT
+              value: standard
+            # Where the injected agents will talk to Vault.
+            - name: AGENT_INJECT_VAULT_ADDR
+              value: http://vault.vault-demo.svc:8200
+            - name: AGENT_INJECT_VAULT_AUTH_PATH
+              value: auth/kubernetes
+            # Image used for the injected init container and sidecar.
+            # Digest-pinned by hand: this is an env var, so the kustomize
+            # images: transformer cannot rewrite it. Keep in step with the
+            # vault entry in kustomization.yaml (currently 1.21.4).
+            - name: AGENT_INJECT_VAULT_IMAGE
+              value: docker.io/hashicorp/vault@sha256:4e33b126a59c0c333b76fb4e894722462659a6bec7c48c9ee8cea56fccfd2569
+            # Generate a self-signed serving cert on startup and patch the CA
+            # bundle into this MutatingWebhookConfiguration. This is why the
+            # Application ignores diffs on /webhooks/0/clientConfig/caBundle.
+            - name: AGENT_INJECT_TLS_AUTO
+              value: vault-agent-injector-cfg
+            - name: AGENT_INJECT_TLS_AUTO_HOSTS
+              value: vault-agent-injector-svc,vault-agent-injector-svc.vault-demo,vault-agent-injector-svc.vault-demo.svc
+            - name: AGENT_INJECT_REVOKE_ON_SHUTDOWN
+              value: "false"
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          ports:
+            - name: https
+              containerPort: 8080
+          livenessProbe:
+            httpGet:
+              path: /health/ready
+              port: 8080
+              scheme: HTTPS
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: 8080
+              scheme: HTTPS
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vault-agent-injector-svc
+  namespace: vault-demo
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+  labels:
+    app.kubernetes.io/name: vault-agent-injector
+spec:
+  selector:
+    app.kubernetes.io/name: vault-agent-injector
+    app.kubernetes.io/component: webhook
+  ports:
+    - name: https
+      port: 443
+      targetPort: 8080
+---
+# WAVE 3: register the webhook last, once the injector is actually serving.
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: vault-agent-injector-cfg
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+  labels:
+    app.kubernetes.io/name: vault-agent-injector
+webhooks:
+  - name: vault.hashicorp.com
+    admissionReviewVersions: ["v1", "v1beta1"]
+    sideEffects: None
+    # Ignore, not Fail: if the injector is down it must not block Pod creation
+    # anywhere on the cluster.
+    failurePolicy: Ignore
+    clientConfig:
+      service:
+        name: vault-agent-injector-svc
+        namespace: vault-demo
+        path: /mutate
+      caBundle: ""   # populated at runtime by AGENT_INJECT_TLS_AUTO
+    rules:
+      - operations: ["CREATE", "UPDATE"]
+        apiGroups: [""]
+        apiVersions: ["v1"]
+        resources: ["pods"]
+    # Scope the webhook to opted-in namespaces only. On a shared cluster you do
+    # not want a demo webhook in the admission path of every Pod.
+    #
+    # Selecting on a label rather than on namespace names keeps the platform
+    # layer decoupled from the application layer: the apps opt in via
+    # managedNamespaceMetadata in apps/payments-api.yaml and
+    # apps/inventory-web.yaml, and a new app needs no change here.
+    namespaceSelector:
+      matchLabels:
+        demo.redhat.com/vault-injection: enabled

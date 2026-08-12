@@ -1,0 +1,54 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: inventory-demo
+
+# The point of this overlay: the SAME base runs on a non-OpenShift cluster.
+# The only structural difference is that nothing here adds a Route - exposure
+# is an environment decision, which is exactly why the base stops at the
+# Service (see manifests/inventory-web/base/service.yaml).
+#
+# Reach it with:
+#   kubectl -n inventory-demo port-forward svc/inventory-web 8080:8080
+#
+# On a cluster with an ingress controller or the AWS Load Balancer Controller,
+# add an Ingress here or patch the Service to type: LoadBalancer.
+resources:
+  - ../../base
+
+configMapGenerator:
+  - name: inventory-web-env
+    behavior: merge
+    literals:
+      - APP_ENV=eks
+      - LOG_LEVEL=debug
+      - INVENTORY_PAGE_SIZE=50
+      - INVENTORY_WAREHOUSE_REGION=us-east-2
+    options:
+      annotations:
+        argocd.argoproj.io/sync-wave: "1"
+
+  - name: inventory-web-ui
+    behavior: replace
+    files:
+      - config/ui.properties
+    options:
+      annotations:
+        argocd.argoproj.io/sync-wave: "1"
+
+patches:
+  - path: patch.yaml
+
+replicas:
+  - name: inventory-web
+    count: 1
+
+images:
+  - name: registry.access.redhat.com/ubi9/python-311
+    newTag: 1-1762197673
+    digest: sha256:d0b35f779ca0ae87deaf17cd1923461904f52d3ef249a53dbd487e02bdabdde6
+
+labels:
+  - includeSelectors: false
+    pairs:
+      demo.redhat.com/overlay: eks

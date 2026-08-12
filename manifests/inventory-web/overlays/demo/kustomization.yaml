@@ -1,0 +1,49 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: inventory-demo
+
+resources:
+  - ../../base
+  - route.yaml   # the Route only exists in this overlay
+
+configMapGenerator:
+  - name: inventory-web-env
+    behavior: merge
+    literals:
+      - APP_ENV=demo
+      - LOG_LEVEL=debug
+      - INVENTORY_PAGE_SIZE=50
+      - INVENTORY_WAREHOUSE_REGION=us-east-1
+    options:
+      annotations:
+        argocd.argoproj.io/sync-wave: "1"
+
+  # behavior: replace throws the base file away instead of merging into it.
+  # Useful when an environment needs a genuinely different file, not a few
+  # different keys.
+  - name: inventory-web-ui
+    behavior: replace
+    files:
+      - config/ui.properties
+    options:
+      annotations:
+        argocd.argoproj.io/sync-wave: "1"
+
+patches:
+  - path: replicas-patch.yaml
+
+replicas:
+  - name: inventory-web
+    count: 2
+
+# Digest-pinned, never :latest. See payments-api for the rationale.
+images:
+  - name: registry.access.redhat.com/ubi9/python-311
+    newTag: 1-1762197673
+    digest: sha256:d0b35f779ca0ae87deaf17cd1923461904f52d3ef249a53dbd487e02bdabdde6
+
+labels:
+  - includeSelectors: false
+    pairs:
+      demo.redhat.com/overlay: demo
