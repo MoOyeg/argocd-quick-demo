@@ -4,6 +4,10 @@ kind: Kustomization
 # Applied by hand on the hub cluster:
 #   kustomize build multicluster/bootstrap-hub | oc apply -f -
 #
+# This bootstraps the HUB's own app-of-apps. The spoke has no equivalent: its
+# Applications are authored on the hub under multicluster/eks and pushed down
+# by the Argo CD agent, so there is nothing to bootstrap on the spoke itself.
+#
 # Reuses ../../bootstrap (the two AppProjects and the root Application) and
 # only repoints the root at this cluster's app-of-apps directory. The
 # AppProjects are not cluster-specific, so they are shared rather than copied.

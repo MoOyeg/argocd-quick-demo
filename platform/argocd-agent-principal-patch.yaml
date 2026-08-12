@@ -1,0 +1,29 @@
+# Argo CD Agent (RHACM 2.15+) - hub principal configuration.
+#
+# Apply on the HUB only, before multicluster/eks:
+#   oc patch argocd openshift-gitops -n openshift-gitops \
+#     --type=merge --patch-file platform/argocd-agent-principal-patch.yaml
+#
+# Without allowedNamespaces the principal starts with
+#   Starting argocd-agent (server) v0.9.0 (ns=openshift-gitops, allowed_namespaces=[])
+# and watches nothing but its own namespace. Applications authored on the hub
+# in an agent namespace are then silently ignored - never pushed to the spoke,
+# no error anywhere except that nothing happens.
+#
+# One entry per agent, and the value is the ManagedCluster name.
+spec:
+  argoCDAgent:
+    principal:
+      namespace:
+        allowedNamespaces:
+          - eks-cluster-1
+
+# DO NOT ALSO SET spec.sourceNamespaces FOR THESE NAMESPACES.
+#
+# It looks like the right thing - "apps in any namespace" is how you normally
+# surface Applications outside the control-plane namespace - but it makes the
+# HUB's own application-controller adopt the agent's Applications and reconcile
+# them against the hub cluster. It then finds none of the spoke's resources
+# locally and overwrites the status the agent reported with OutOfSync/Missing,
+# fighting the principal for the same field. The principal alone owns these
+# objects; the hub controller must not see them.

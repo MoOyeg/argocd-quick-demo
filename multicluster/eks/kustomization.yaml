@@ -1,12 +1,28 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-# App-of-apps content for the EKS spoke.
+# Applications for the EKS spoke - APPLIED TO THE HUB, not to the spoke.
+#
+# With the Argo CD agent (RHACM 2.15+) the hub is the control plane: an
+# Application created on the hub in the namespace named after the agent
+# (eks-cluster-1) is pushed down to that agent, which reconciles it locally and
+# reports status back. That is what puts the spoke's applications in the hub UI.
+#
+# Note there is deliberately no root Application here. An app-of-apps root
+# would be pushed to the spoke and would then create its children *on the
+# spoke*, where they have no hub-side counterpart - so they would be invisible
+# on the hub and the principal would log, once per second:
+#   could not update application status for eks-cluster-1/<app>:
+#     applications.argoproj.io "<app>" not found
+# With the agent, the hub already is the single place these are authored, so
+# the app-of-apps indirection buys nothing on the spoke side.
 #
 # Same Vault platform, and inventory-web instead of payments-api. Vault has to
 # run on BOTH clusters: agent injection is a mutating admission webhook, so it
 # can only inject into pods in its own cluster.
-namespace: openshift-gitops
+#
+# The namespace below is the AGENT NAME as registered in RHACM.
+namespace: eks-cluster-1
 
 resources:
   - ../../apps
