@@ -24,10 +24,10 @@ metadata:
 spec:
   project: demo-platform
   source:
-    repoURL: __REPO_URL__
+    repoURL: https://github.com/MoOyeg/argocd-quick-demo.git
     # Practice: "Version manifests". Point this at a git tag or a commit SHA,
     # not at a branch. ./scripts/set-repo.sh warns when you pass a branch.
-    targetRevision: __TARGET_REVISION__
+    targetRevision: main
     path: apps
   destination:
     server: https://kubernetes.default.svc

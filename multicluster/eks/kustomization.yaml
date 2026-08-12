@@ -1,0 +1,42 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# App-of-apps content for the EKS spoke.
+#
+# Same Vault platform, and inventory-web instead of payments-api. Vault has to
+# run on BOTH clusters: agent injection is a mutating admission webhook, so it
+# can only inject into pods in its own cluster.
+namespace: openshift-gitops
+
+resources:
+  - ../../apps
+
+patches:
+  # Remove payments-api from this cluster's set.
+  - patch: |
+      apiVersion: argoproj.io/v1alpha1
+      kind: Application
+      metadata:
+        name: payments-api
+        namespace: openshift-gitops
+      $patch: delete
+
+  # The only cluster-specific difference: point inventory-web at the overlay
+  # that creates no OpenShift Route, and move it up a wave now that it is the
+  # only workload here.
+  - target:
+      group: argoproj.io
+      kind: Application
+      name: inventory-web
+    patch: |
+      - op: replace
+        path: /spec/source/path
+        value: manifests/inventory-web/overlays/eks
+      - op: replace
+        path: /metadata/annotations/argocd.argoproj.io~1sync-wave
+        value: "2"
+
+labels:
+  - includeSelectors: false
+    pairs:
+      demo.redhat.com/cluster: eks

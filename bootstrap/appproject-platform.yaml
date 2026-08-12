@@ -27,7 +27,7 @@ spec:
   description: Cluster configuration for the GitOps demo (Vault platform)
 
   sourceRepos:
-    - __REPO_URL__
+    - https://github.com/MoOyeg/argocd-quick-demo.git
 
   destinations:
     - server: https://kubernetes.default.svc

@@ -13,8 +13,8 @@ metadata:
 spec:
   project: demo-apps
   source:
-    repoURL: __REPO_URL__
-    targetRevision: __TARGET_REVISION__
+    repoURL: https://github.com/MoOyeg/argocd-quick-demo.git
+    targetRevision: main
     path: manifests/inventory-web/overlays/demo
   destination:
     server: https://kubernetes.default.svc

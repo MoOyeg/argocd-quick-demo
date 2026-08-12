@@ -1,0 +1,24 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Applied by hand on the hub cluster:
+#   kustomize build multicluster/bootstrap-hub | oc apply -f -
+#
+# Reuses ../../bootstrap (the two AppProjects and the root Application) and
+# only repoints the root at this cluster's app-of-apps directory. The
+# AppProjects are not cluster-specific, so they are shared rather than copied.
+resources:
+  - ../../bootstrap
+
+patches:
+  - target:
+      group: argoproj.io
+      kind: Application
+      name: demo-root
+    patch: |
+      - op: replace
+        path: /spec/source/path
+        value: multicluster/hub
+      - op: replace
+        path: /metadata/annotations/argocd.argoproj.io~1manifest-generate-paths
+        value: /multicluster/hub

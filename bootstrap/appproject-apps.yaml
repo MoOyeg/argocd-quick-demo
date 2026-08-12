@@ -23,7 +23,7 @@ spec:
   description: Application workloads for the GitOps demo
 
   sourceRepos:
-    - __REPO_URL__
+    - https://github.com/MoOyeg/argocd-quick-demo.git
 
   destinations:
     - server: https://kubernetes.default.svc
